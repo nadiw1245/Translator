@@ -1,0 +1,6 @@
+{
+  "name": "Sinhala Translator & AI Terminology Extension",
+  "description": "Context-aware Unicode Sinhala translator and Chrome extension suite with technical dictionary, Singlish phonetic typing, and AI agent for learning technical terms.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
