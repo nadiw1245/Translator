@@ -30,6 +30,10 @@ export function generateExtensionFiles(dictionary: DictionaryEntry[]): Extension
     "storage",
     "contextMenus"
   ],
+  "host_permissions": [
+    "https://translate.googleapis.com/*",
+    "<all_urls>"
+  ],
   "commands": {
     "translate-page": {
       "suggested_key": {
@@ -95,6 +99,17 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     });
   } else if (info.menuItemId === "translate-sinhala-full-page") {
     chrome.tabs.sendMessage(tab.id, { action: "TRANSLATE_FULL_PAGE" });
+  }
+});
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "FETCH_TRANSLATION") {
+    const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=si&dt=t&q=" + encodeURIComponent(request.text);
+    fetch(url)
+      .then(res => res.json())
+      .then(data => sendResponse({ data }))
+      .catch(err => sendResponse({ error: err.message }));
+    return true; // Keep the message channel open for async response
   }
 });
 `;
@@ -277,19 +292,22 @@ async function translateFullPageActual() {
       const originalText = textNode.textContent.trim();
       
       try {
-        const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=si&dt=t&q=" + encodeURIComponent(originalText);
-        const res = await fetch(url);
-        const data = await res.json();
-        
-        let translated = "";
-        if (data && data[0]) {
-          for (let j = 0; j < data[0].length; j++) {
-            if (data[0][j][0]) translated += data[0][j][0];
+        const response = await new Promise(resolve => {
+          chrome.runtime.sendMessage({ action: "FETCH_TRANSLATION", text: originalText }, resolve);
+        });
+
+        if (response && response.data) {
+          const data = response.data;
+          let translated = "";
+          if (data && data[0]) {
+            for (let j = 0; j < data[0].length; j++) {
+              if (data[0][j][0]) translated += data[0][j][0];
+            }
           }
-        }
-        
-        if (translated) {
-          textNode.textContent = translated;
+          
+          if (translated) {
+            textNode.textContent = translated;
+          }
         }
       } catch(e) {
         // Silently skip if rate limited
