@@ -246,16 +246,26 @@ function showTranslateButton(x, y, selectedText) {
       <div id="sinhala-result" style="display:none;" class="sinhala-text"></div>
     \`;
 
-    // Request translation from extension background or local transliteration
-    setTimeout(() => {
+    // Request translation from extension background API
+    chrome.runtime.sendMessage({ action: "FETCH_TRANSLATION", text: selectedText }, (response) => {
       const loader = bubble.querySelector("#sinhala-loading");
       const res = bubble.querySelector("#sinhala-result");
+      
       if (loader && res) {
         loader.style.display = "none";
         res.style.display = "block";
-        res.textContent = "තේරුම: " + selectedText + " (Unicode Sinhala)";
+        
+        if (response && response.data && response.data[0]) {
+          let translated = "";
+          for (let j = 0; j < response.data[0].length; j++) {
+            if (response.data[0][j][0]) translated += response.data[0][j][0];
+          }
+          res.textContent = "තේරුම: " + translated;
+        } else {
+          res.textContent = "තේරුම: " + selectedText + " (offline)";
+        }
       }
-    }, 400);
+    });
   }
 
   bubble.querySelector(".sinhala-close-btn").addEventListener("click", removeTooltip);
@@ -271,49 +281,62 @@ function removeTooltip() {
 }
 
 async function translateFullPageActual() {
-  // Select visible text-heavy elements
-  const elements = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, span, a, div, h1 span'))
-    .filter(el => {
-      const hasText = Array.from(el.childNodes).some(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 10);
-      const isVisible = el.offsetParent !== null;
-      // Skip code blocks
-      const notCode = !el.closest('pre') && !el.closest('code') && !el.closest('noscript') && !el.closest('style') && !el.closest('script');
-      return hasText && isVisible && notCode;
-    });
-
-  // Process visible items sequentially with a delay to respect rate limits
-  const targetElements = elements.slice(0, 100);
-  
-  for (let i = 0; i < targetElements.length; i++) {
-    const el = targetElements[i];
-    const textNodes = Array.from(el.childNodes).filter(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 2);
-    
-    for (let textNode of textNodes) {
-      const originalText = textNode.textContent.trim();
-      
-      try {
-        const response = await new Promise(resolve => {
-          chrome.runtime.sendMessage({ action: "FETCH_TRANSLATION", text: originalText }, resolve);
-        });
-
-        if (response && response.data) {
-          const data = response.data;
-          let translated = "";
-          if (data && data[0]) {
-            for (let j = 0; j < data[0].length; j++) {
-              if (data[0][j][0]) translated += data[0][j][0];
-            }
-          }
-          
-          if (translated) {
-            textNode.textContent = translated;
-          }
-        }
-      } catch(e) {
-        // Silently skip if rate limited
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode: function(node) {
+      if (!node.parentNode) return NodeFilter.FILTER_REJECT;
+      const parentTag = node.parentNode.nodeName;
+      // Skip hidden or code elements
+      if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'CODE', 'PRE'].includes(parentTag)) {
+        return NodeFilter.FILTER_REJECT;
       }
-      await new Promise(r => setTimeout(r, 150));
+      const text = node.textContent.trim();
+      // Skip short texts or pure numbers/symbols
+      if (text.length < 5) return NodeFilter.FILTER_SKIP;
+      return NodeFilter.FILTER_ACCEPT;
     }
+  });
+
+  const textNodes = [];
+  while (walker.nextNode()) {
+    // Basic visibility check
+    const el = walker.currentNode.parentElement;
+    if (el && window.getComputedStyle(el).display !== 'none') {
+      textNodes.push(walker.currentNode);
+    }
+  }
+
+  // Cap at 150 nodes to avoid huge delays, batch them by 10 to reduce requests
+  const targetNodes = textNodes.slice(0, 150);
+  const batchSize = 10;
+  
+  for (let i = 0; i < targetNodes.length; i += batchSize) {
+    const batch = targetNodes.slice(i, i + batchSize);
+    const combinedText = batch.map(n => n.textContent.trim().replace(/\\|\\|\\|/g, "")).join(" ||| ");
+    
+    try {
+      const response = await new Promise(resolve => {
+        chrome.runtime.sendMessage({ action: "FETCH_TRANSLATION", text: combinedText }, resolve);
+      });
+      
+      if (response && response.data && response.data[0]) {
+        let translatedText = "";
+        for (let j = 0; j < response.data[0].length; j++) {
+          if (response.data[0][j][0]) translatedText += response.data[0][j][0];
+        }
+        
+        const translatedParts = translatedText.split("|||").map(s => s.trim());
+        batch.forEach((node, idx) => {
+          if (translatedParts[idx]) {
+            node.textContent = translatedParts[idx];
+          }
+        });
+      }
+    } catch(e) {
+      console.warn("Batch translation error", e);
+    }
+    
+    // Polite delay to avoid 429 Too Many Requests
+    await new Promise(r => setTimeout(r, 400));
   }
 }
 
