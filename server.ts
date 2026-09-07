@@ -37,7 +37,7 @@ async function callGeminiWithRetry(fn: () => Promise<any>, maxRetries = 2): Prom
       lastError = err;
       const isTransient =
         err?.message?.includes("503") ||
-        err?.message?.includes("429") ||
+        (err?.message?.includes("429") && !err?.message?.includes("Quota exceeded")) ||
         err?.message?.includes("UNAVAILABLE") ||
         err?.message?.includes("high demand");
       if (isTransient && attempt < maxRetries) {
@@ -151,7 +151,7 @@ Provide your response strictly in the following JSON structure:
 
     const response = await callGeminiWithRetry(() =>
       ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           systemInstruction,
@@ -165,7 +165,7 @@ Provide your response strictly in the following JSON structure:
     const data = JSON.parse(rawText);
     res.json(data);
   } catch (error: any) {
-    console.warn("Translation API notice, evaluating resilient fallback:", error?.message);
+    console.log("Translation API notice, evaluating resilient fallback:", error?.message);
 
     // Provide intelligent fallback from verified technical glossary
     const lower = text.toLowerCase();
@@ -248,7 +248,7 @@ Return in JSON matching this schema:
 
     const response = await callGeminiWithRetry(() =>
       ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           systemInstruction,
@@ -262,7 +262,7 @@ Return in JSON matching this schema:
     const data = JSON.parse(rawText);
     res.json(data);
   } catch (error: any) {
-    console.warn("Learn term API notice, using linguistic fallback:", error?.message);
+    console.log("Learn term API notice, using linguistic fallback:", error?.message);
     const { term = "" } = req.body;
     res.json({
       term: term.trim(),
@@ -304,7 +304,7 @@ When answering:
 - Be concise, friendly, and practical.`;
 
     const chat = ai.chats.create({
-      model: "gemini-3.8-flash",
+      model: "gemini-2.5-flash",
       config: {
         systemInstruction,
         temperature: 0.3,
@@ -321,7 +321,7 @@ When answering:
     const response = await callGeminiWithRetry(() => chat.sendMessage({ message }));
     res.json({ reply: response.text || "" });
   } catch (error: any) {
-    console.warn("AI chat API notice:", error?.message);
+    console.log("AI chat API notice:", error?.message);
     res.json({
       reply: `ආයුබෝවන්! ඔබ ඇසූ "${message}" සම්බන්ධයෙන්: Google Translate පරිගණක හා වෙබ් තාක්ෂණික වචන (Technical terms) වචනාර්ථයෙන් (literal) පරිවර්තනය කිරීම නිසා දෝෂ ඇති වේ. උදාහරණයක් ලෙස "Cloud computing" යනු "වළාකුළු පරිගණනය" ලෙසද, "Cache memory" යනු "හඹා මතකය / නිහිත මතකය" ලෙසද නිරවද්‍ය යුනිකෝඩ් සිංහලෙන් හැඳින්විය යුතුය.`,
     });
@@ -358,11 +358,11 @@ app.post("/api/translate-site", async (req, res) => {
       if (fetchRes.ok) {
         rawContent = await fetchRes.text();
       } else {
-        console.warn(`URL fetch returned status ${fetchRes.status}, continuing with url metadata`);
+        console.log(`URL fetch returned status ${fetchRes.status}, continuing with url metadata`);
         rawContent = `Website Title: ${url}\nContent could not be scraped directly due to remote CORS/anti-bot protection. Please paste the article text or HTML directly for instant full translation.`;
       }
     } catch (err: any) {
-      console.warn("URL direct fetch notice:", err?.message);
+      console.log("URL direct fetch notice:", err?.message);
       rawContent = `Website: ${url}\nNote: Remote server blocked direct crawler access. Please copy and paste the page text into the content box to translate with 100% precision.`;
     }
   }
@@ -459,7 +459,7 @@ Return strictly a JSON object with this schema:
 
     const response = await callGeminiWithRetry(() =>
       ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-2.5-flash",
         contents: prompt,
         config: {
           systemInstruction,
@@ -473,7 +473,7 @@ Return strictly a JSON object with this schema:
     const data = JSON.parse(rawResult);
     res.json(data);
   } catch (error: any) {
-    console.warn("Full site translation Gemini notice, executing resilient generator:", error?.message);
+    console.log("Full site translation Gemini notice, executing resilient generator:", error?.message);
 
     // Resilient fallback site translation
     const lines = trimmedInput

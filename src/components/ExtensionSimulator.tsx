@@ -24,15 +24,65 @@ import {
   X,
   Plus,
   Trash2,
-  Lock
+  Lock,
+  Cpu,
+  Zap,
+  Play
 } from "lucide-react";
-import { DictionaryEntry } from "../types";
+import { DictionaryEntry, OmarchyTheme } from "../types";
 
 interface ExtensionSimulatorProps {
   dictionary: DictionaryEntry[];
   onLearnTerm: (term: string, context?: string) => void;
   onOpenExport: () => void;
 }
+
+const THEMES: Record<OmarchyTheme, {
+  name: string;
+  bg: string;
+  card: string;
+  border: string;
+  accent: string;
+  accentText: string;
+  badge: string;
+}> = {
+  onyx: {
+    name: "Omarchy Onyx",
+    bg: "#08090d",
+    card: "#0d0f17",
+    border: "#1f2433",
+    accent: "#38bdf8",
+    accentText: "text-sky-400",
+    badge: "bg-sky-500/10 text-sky-400 border-sky-500/20"
+  },
+  tokyonight: {
+    name: "Tokyo Night",
+    bg: "#16161e",
+    card: "#1a1b26",
+    border: "#292e42",
+    accent: "#bb9af7",
+    accentText: "text-purple-400",
+    badge: "bg-purple-500/10 text-purple-300 border-purple-500/20"
+  },
+  nord: {
+    name: "Omarchy Nord",
+    bg: "#242933",
+    card: "#2e3440",
+    border: "#3b4252",
+    accent: "#88c0d0",
+    accentText: "text-cyan-300",
+    badge: "bg-cyan-500/10 text-cyan-300 border-cyan-500/20"
+  },
+  gruvbox: {
+    name: "Retro Gruvbox",
+    bg: "#1d2021",
+    card: "#282828",
+    border: "#3c3836",
+    accent: "#fabd2f",
+    accentText: "text-amber-400",
+    badge: "bg-amber-500/10 text-amber-300 border-amber-500/20"
+  }
+};
 
 const DEMO_PAGES = [
   {
@@ -87,8 +137,23 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
   const [viewMode, setViewMode] = useState<"inplace" | "sidebyside">("inplace");
 
   // Extension options configuration state (Stored in extension sync storage)
+  const [omarchyTheme, setOmarchyTheme] = useState<OmarchyTheme>("onyx");
+  const [showAsciiBanner, setShowAsciiBanner] = useState(true);
   const [showOptionsModal, setShowOptionsModal] = useState(false);
-  const [popupTab, setPopupTab] = useState<"full-site" | "options" | "quick" | "lexicon">("full-site");
+  const [popupTab, setPopupTab] = useState<"full-site" | "cli" | "neofetch" | "options" | "lexicon">("full-site");
+  const [cliInput, setCliInput] = useState("translate \"concurrency and memory leaks\"");
+  const [cliLogs, setCliLogs] = useState<Array<{ cmd: string; out: string; sub?: string }>>([
+    {
+      cmd: "omarchy-sls --version",
+      out: "SLS 1134:2011 Unicode Specification Engine v1.2 [Sri Lanka Standard]",
+      sub: "Loaded 50+ official UCSC / ICTA vocabulary items into cache."
+    },
+    {
+      cmd: "translate \"container orchestration deadlock\"",
+      out: "බහාලුම් සංවිධානය සහ අන්‍යෝන්‍ය අවහිරය (Container Orchestration & Deadlock)",
+      sub: "SLS Standard Match: PASS • Token: U+0DB6 U+0DC4 U+0DCF"
+    }
+  ]);
   const [targetTone, setTargetTone] = useState<"technical" | "natural" | "formal">("technical");
   const [preserveCodeBlocks, setPreserveCodeBlocks] = useState(true);
   const [preserveCli, setPreserveCli] = useState(true);
@@ -438,26 +503,156 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
     );
   };
 
+  const currentTheme = THEMES[omarchyTheme];
+
+  const handleCliSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const query = cliInput.trim();
+    if (!query) return;
+
+    // Check if command is like translate "something" or just text
+    let cleanText = query;
+    if (query.startsWith("translate ")) {
+      cleanText = query.replace(/^translate\s+["']?/, "").replace(/["']?$/, "");
+    }
+
+    // Lookup in dictionary
+    const match = dictionary.find(
+      (d) =>
+        d.term.toLowerCase() === cleanText.toLowerCase() ||
+        cleanText.toLowerCase().includes(d.term.toLowerCase())
+    );
+
+    let output = "";
+    let sub = "";
+    if (match) {
+      output = `${match.sinhalaStandard} (${match.term})`;
+      sub = `SLS 1134: PASS • ${match.sinhalaPhonetic} • Cat: ${match.category}`;
+    } else {
+      // Fallback
+      output = `පරිවර්තනය: "${cleanText}" (Unicode SLS)`;
+      sub = `Dynamic neural mapping • Tone: ${targetTone}`;
+    }
+
+    setCliLogs((prev) => [
+      ...prev,
+      {
+        cmd: query,
+        out: output,
+        sub
+      }
+    ]);
+    setCliInput("");
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-4 font-jetbrains">
       
-      {/* Omarchy Clean Header Banner */}
+      {/* Omarchy Hyprland / Waybar Desktop Top-Strip */}
+      <div className="bg-[#050608] px-4 py-2 rounded-2xl border border-zinc-800 flex flex-wrap items-center justify-between gap-3 text-[11px] select-none shadow-lg">
+        {/* Left: Workspaces */}
+        <div className="flex items-center gap-2">
+          <span className="text-zinc-600 font-bold">WS:</span>
+          <div className="flex items-center gap-1">
+            {[
+              { id: "full-site", label: "1:web" },
+              { id: "cli", label: "2:cli" },
+              { id: "neofetch", label: "3:specs" },
+              { id: "options", label: "4:opts" },
+              { id: "lexicon", label: "5:dict" }
+            ].map((ws) => (
+              <button
+                key={ws.id}
+                onClick={() => setPopupTab(ws.id as any)}
+                className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
+                  popupTab === ws.id
+                    ? "bg-zinc-800 text-sky-400 font-bold border border-zinc-700 shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                [{ws.label}]
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Center: System Status */}
+        <div className="hidden md:flex items-center gap-2.5 text-zinc-400 text-[10px]">
+          <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            OMARCHY v1.2 :: SLS-1134 ACTIVE
+          </span>
+          <span className="text-zinc-700">•</span>
+          <span>CPU: 3%</span>
+          <span className="text-zinc-700">•</span>
+          <span>RAM: 2.1G</span>
+          <span className="text-zinc-700">•</span>
+          <span>SHORTCUT: <kbd className="omarchy-kbd">Alt</kbd> + <kbd className="omarchy-kbd">S</kbd></span>
+        </div>
+
+        {/* Right: Theme Selector */}
+        <div className="flex items-center gap-2">
+          <span className="text-zinc-500 text-[10px] uppercase">Theme:</span>
+          <div className="flex items-center gap-1 bg-[#0a0c12] p-0.5 rounded border border-zinc-800 text-[10px]">
+            {(["onyx", "tokyonight", "nord", "gruvbox"] as OmarchyTheme[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setOmarchyTheme(t)}
+                className={`px-2 py-0.5 rounded uppercase font-bold text-[9px] transition-colors cursor-pointer ${
+                  omarchyTheme === t
+                    ? "bg-zinc-700 text-white shadow-sm"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                {t === "onyx" ? "Onyx" : t === "tokyonight" ? "Tokyo" : t === "nord" ? "Nord" : "Gruv"}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Omarchy ASCII Art Graphic Crest Banner */}
+      {showAsciiBanner && (
+        <div className="relative bg-[#07080c] border border-zinc-800/90 rounded-2xl p-4 text-[10px] leading-relaxed text-zinc-400 overflow-x-auto shadow-inner">
+          <div className="flex items-start justify-between gap-4">
+            <pre className="text-sky-400/90 font-bold select-none text-[9px] sm:text-[10px]">
+{`  ▲       OMARCHY ARCH LINUX :: UNICODE SINHALA TRANSLATION ENGINE
+ / \\      KERNEL: SLS 1134:2011 // COMPOSITOR: HYPRLAND / WAYBAR
+/   \\     LEXICON: 50+ ICTA/UCSC OFFICIAL SRI LANKA TECHNICAL TERMS
+/_/ \\_\\   KEYBIND: [ALT + S] FULL-PAGE TRANSLATE | [ALT + T] TOOLTIP`}
+            </pre>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowAsciiBanner(false)}
+                className="text-zinc-500 hover:text-zinc-300 p-1 rounded hover:bg-zinc-800 transition-colors"
+                title="Dismiss Banner"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Omarchy Header Controls */}
       <div className="bg-[#0c0e14] p-5 rounded-2xl border border-zinc-800/90 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-base sm:text-lg font-bold text-zinc-100 flex items-center gap-2">
-              <Chrome className="w-5 h-5 text-sky-400" />
-              <span>Sinhala Web Extension – Developer Suite</span>
+              <span className="w-6 h-6 rounded bg-zinc-900 border border-zinc-700 text-sky-400 flex items-center justify-center font-bold text-xs">
+                ▲
+              </span>
+              <span>Omarchy Sinhala Web Extension Suite</span>
             </h1>
-            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
-              Omarchy Minimalist V3
+            <span className="text-[11px] px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+              {currentTheme.name}
             </span>
-            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              SLS 1134 Compliant
+            <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              SLS 1134 Certified
             </span>
           </div>
           <p className="text-xs text-zinc-400 mt-1 max-w-2xl">
-            A clean, developer-focused browser extension for Google Chrome, Brave, Edge &amp; Firefox. Full site translation, in-page technical tooltips, and customizable extension options.
+            Tiling-window minimalist translation engine for Arch/Linux power users, Chrome, Brave, and Edge. Translates pages while preserving code blocks and CLI commands.
           </p>
         </div>
 
@@ -467,14 +662,15 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white border border-zinc-700/80 text-xs font-medium transition-colors cursor-pointer"
           >
             <Settings className="w-3.5 h-3.5 text-zinc-400" />
-            <span>Extension Options</span>
+            <span>Options (සැකසුම්)</span>
           </button>
 
           <button
             onClick={onOpenExport}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white hover:bg-zinc-200 text-zinc-950 font-bold text-xs shadow-md transition-transform active:scale-95 cursor-pointer"
           >
-            <span>⚡ Install in Browser</span>
+            <Zap className="w-3.5 h-3.5 text-zinc-950" />
+            <span>Install Extension</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -720,25 +916,30 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
               </button>
             </div>
 
-            {/* Simulated 380px Extension UI */}
-            <div className="rounded-xl border border-zinc-800 bg-[#090a0f] p-4 space-y-3.5 shadow-inner text-xs">
+            {/* Simulated 380px Extension UI in Omarchy Look */}
+            <div className="rounded-2xl border border-zinc-800/90 bg-[#08090d] p-4 space-y-3.5 shadow-2xl text-xs font-jetbrains">
               
               {/* Header */}
               <div className="flex items-center justify-between pb-2.5 border-b border-zinc-800">
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded bg-sky-500 flex items-center justify-center text-zinc-950 font-bold text-xs">
-                    සිං
+                  <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-700 flex items-center justify-center text-sky-400 font-bold text-xs shadow-inner">
+                    ▲
                   </div>
                   <div>
-                    <span className="font-bold text-zinc-100 block leading-tight">Sinhala Translator</span>
-                    <span className="text-[9px] text-zinc-500 font-mono">v1.2 • SLS 1134 Engine</span>
+                    <span className="font-bold text-zinc-100 block leading-tight text-xs flex items-center gap-1.5">
+                      <span>OMARCHY TRANSLATE</span>
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                        SLS 1134
+                      </span>
+                    </span>
+                    <span className="text-[9px] text-zinc-500">hyprland • v1.2.0 • {dictionary.length} terms</span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => setShowOptionsModal(true)}
-                    className="p-1 text-zinc-400 hover:text-white rounded hover:bg-zinc-800"
+                    className="p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
                     title="Extension Options (සැකසුම්)"
                   >
                     <Settings className="w-3.5 h-3.5" />
@@ -746,47 +947,57 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                 </div>
               </div>
 
-              {/* Segmented Tabs */}
-              <div className="grid grid-cols-4 gap-1 p-1 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] font-mono text-center">
+              {/* Segmented 5 Tabs */}
+              <div className="grid grid-cols-5 gap-0.5 p-1 rounded-xl bg-[#0d0f17] border border-zinc-800/90 text-[10px] text-center font-medium">
                 <button
                   onClick={() => setPopupTab("full-site")}
-                  className={`py-1 rounded transition-colors ${
+                  className={`py-1 rounded-lg transition-colors ${
                     popupTab === "full-site"
-                      ? "bg-zinc-800 text-white font-semibold shadow-sm"
+                      ? "bg-zinc-800 text-sky-400 font-bold shadow-sm"
                       : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
-                  Full Site
+                  Site
+                </button>
+                <button
+                  onClick={() => setPopupTab("cli")}
+                  className={`py-1 rounded-lg transition-colors ${
+                    popupTab === "cli"
+                      ? "bg-zinc-800 text-sky-400 font-bold shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  CLI
+                </button>
+                <button
+                  onClick={() => setPopupTab("neofetch")}
+                  className={`py-1 rounded-lg transition-colors ${
+                    popupTab === "neofetch"
+                      ? "bg-zinc-800 text-sky-400 font-bold shadow-sm"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  Specs
                 </button>
                 <button
                   onClick={() => setPopupTab("options")}
-                  className={`py-1 rounded transition-colors ${
+                  className={`py-1 rounded-lg transition-colors ${
                     popupTab === "options"
-                      ? "bg-zinc-800 text-white font-semibold shadow-sm"
+                      ? "bg-zinc-800 text-sky-400 font-bold shadow-sm"
                       : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
-                  Options
-                </button>
-                <button
-                  onClick={() => setPopupTab("quick")}
-                  className={`py-1 rounded transition-colors ${
-                    popupTab === "quick"
-                      ? "bg-zinc-800 text-white font-semibold shadow-sm"
-                      : "text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  Quick
+                  Opts
                 </button>
                 <button
                   onClick={() => setPopupTab("lexicon")}
-                  className={`py-1 rounded transition-colors ${
+                  className={`py-1 rounded-lg transition-colors ${
                     popupTab === "lexicon"
-                      ? "bg-zinc-800 text-white font-semibold shadow-sm"
+                      ? "bg-zinc-800 text-sky-400 font-bold shadow-sm"
                       : "text-zinc-400 hover:text-zinc-200"
                   }`}
                 >
-                  Lexicon
+                  Dict
                 </button>
               </div>
 
@@ -794,14 +1005,14 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
               {popupTab === "full-site" && (
                 <div className="space-y-3 animate-in fade-in duration-150">
                   {/* Current Domain Badge */}
-                  <div className="p-2.5 rounded-lg bg-zinc-900/90 border border-zinc-800 flex items-center justify-between text-[11px]">
+                  <div className="p-2.5 rounded-xl bg-[#0d0f17] border border-zinc-800 flex items-center justify-between text-[11px]">
                     <div>
-                      <span className="text-[10px] font-mono text-zinc-500 block uppercase">Active Tab</span>
-                      <strong className="text-zinc-200 font-mono">
+                      <span className="text-[9px] text-zinc-500 block uppercase">Active Domain</span>
+                      <strong className="text-zinc-200">
                         {customUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "")}
                       </strong>
                     </div>
-                    <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                       {isFullPageTranslated ? "Translated" : "Ready"}
                     </span>
                   </div>
@@ -810,7 +1021,7 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                   <button
                     onClick={handleToggleFullPageTranslation}
                     disabled={fullPageTranslating}
-                    className={`w-full py-2.5 rounded-lg font-bold text-xs shadow-sm transition-all text-center cursor-pointer flex items-center justify-center gap-2 ${
+                    className={`w-full py-2.5 rounded-xl font-bold text-xs shadow-sm transition-all text-center cursor-pointer flex items-center justify-center gap-2 ${
                       isFullPageTranslated
                         ? "bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700"
                         : "bg-white hover:bg-zinc-200 text-zinc-950 shadow-md active:scale-98"
@@ -822,14 +1033,14 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                         ? "පරිවර්තනය වෙමින් පවතී..."
                         : isFullPageTranslated
                         ? "Revert Tab to English"
-                        : "Translate Entire Page (Alt + S)"}
+                        : "Translate Page (Alt + S)"}
                     </span>
                   </button>
 
                   {/* View Mode Toggle */}
                   <div className="flex items-center justify-between pt-2 border-t border-zinc-800 text-[11px]">
-                    <span className="text-zinc-400 font-mono">View Mode:</span>
-                    <div className="flex items-center gap-1 bg-zinc-900 p-0.5 rounded border border-zinc-800 font-mono text-[10px]">
+                    <span className="text-zinc-400">View Mode:</span>
+                    <div className="flex items-center gap-1 bg-[#0d0f17] p-0.5 rounded-lg border border-zinc-800 text-[10px]">
                       <button
                         onClick={() => setViewMode("inplace")}
                         className={`px-2 py-0.5 rounded ${viewMode === "inplace" ? "bg-zinc-800 text-white font-semibold" : "text-zinc-400"}`}
@@ -882,17 +1093,105 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                 </div>
               )}
 
-              {/* Tab 2: Extension Options */}
+              {/* Tab 2: Interactive Omarchy CLI Terminal */}
+              {popupTab === "cli" && (
+                <div className="space-y-2 animate-in fade-in duration-150">
+                  <div className="bg-[#050608] rounded-xl border border-zinc-800/90 p-2.5 font-jetbrains text-[10px] space-y-2 max-h-48 overflow-y-auto pr-1">
+                    <div className="text-zinc-500">omarchy-cli v1.2 (SLS-1134 interactive prompt)</div>
+                    {cliLogs.map((log, idx) => (
+                      <div key={idx} className="space-y-0.5 border-b border-zinc-900 pb-1.5">
+                        <div className="text-sky-400 flex items-center gap-1">
+                          <span className="text-emerald-400">omarchy@arch:~$</span>
+                          <span>{log.cmd}</span>
+                        </div>
+                        <div className="text-zinc-100 font-bold font-sinhala pl-2 text-[11px]">
+                          {log.out}
+                        </div>
+                        {log.sub && (
+                          <div className="text-[9px] text-zinc-500 pl-2">
+                            {log.sub}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <form onSubmit={handleCliSubmit} className="relative">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-[11px]">
+                      ❯
+                    </span>
+                    <input
+                      type="text"
+                      value={cliInput}
+                      onChange={(e) => setCliInput(e.target.value)}
+                      placeholder="translate &quot;concurrency&quot; or type term..."
+                      className="w-full bg-[#0d0f17] border border-zinc-800 rounded-xl pl-6 pr-12 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-sky-500/60 font-jetbrains"
+                    />
+                    <button
+                      type="submit"
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2 py-1 rounded-md bg-zinc-800 text-[10px] text-zinc-300 hover:text-white"
+                    >
+                      Run
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* Tab 3: Neofetch System Graphic Specs View */}
+              {popupTab === "neofetch" && (
+                <div className="space-y-2.5 animate-in fade-in duration-150 font-jetbrains text-[10px]">
+                  <div className="bg-[#050608] p-3 rounded-xl border border-zinc-800/90 text-zinc-300 space-y-1">
+                    <div className="flex items-start gap-3">
+                      <pre className="text-sky-400 font-bold select-none text-[8px] leading-tight">
+{`   /\\
+  /  \\
+ /\\   \\
+/      \\
+/   ,,   \\
+/   |  |  -\\
+/_-''    ''-_`}
+                      </pre>
+                      <div className="space-y-0.5 text-[10px]">
+                        <div className="font-bold text-white text-[11px] pb-1 border-b border-zinc-800">
+                          omarchy@arch-linux
+                        </div>
+                        <div><span className="text-sky-400">OS:</span> Omarchy Linux x86_64</div>
+                        <div><span className="text-sky-400">Host:</span> Sinhala-Translator-v1.2</div>
+                        <div><span className="text-sky-400">Kernel:</span> SLS 1134:2011 Unicode</div>
+                        <div><span className="text-sky-400">Uptime:</span> 100% active tab sync</div>
+                        <div><span className="text-sky-400">WM:</span> Hyprland / Waybar</div>
+                        <div><span className="text-sky-400">Font:</span> JetBrains Mono Nerd</div>
+                        <div><span className="text-sky-400">Lexicon:</span> 50+ ICTA/UCSC terms</div>
+                        <div><span className="text-sky-400">Memory:</span> 2.4MB / 16MB sandboxed</div>
+                      </div>
+                    </div>
+
+                    {/* Terminal Color Swatches */}
+                    <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-center gap-1.5 select-none">
+                      <span className="w-3 h-3 rounded-sm bg-zinc-800"></span>
+                      <span className="w-3 h-3 rounded-sm bg-red-500"></span>
+                      <span className="w-3 h-3 rounded-sm bg-emerald-500"></span>
+                      <span className="w-3 h-3 rounded-sm bg-amber-400"></span>
+                      <span className="w-3 h-3 rounded-sm bg-sky-400"></span>
+                      <span className="w-3 h-3 rounded-sm bg-purple-500"></span>
+                      <span className="w-3 h-3 rounded-sm bg-cyan-400"></span>
+                      <span className="w-3 h-3 rounded-sm bg-white"></span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 4: Extension Options */}
               {popupTab === "options" && (
                 <div className="space-y-3 animate-in fade-in duration-150">
                   <div>
-                    <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block mb-1">
+                    <span className="text-[10px] text-zinc-400 uppercase tracking-wider block mb-1">
                       Target Translation Tone
                     </span>
                     <select
                       value={targetTone}
                       onChange={(e: any) => setTargetTone(e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-xs text-zinc-200 outline-none"
+                      className="w-full bg-[#0d0f17] border border-zinc-800 rounded-xl p-2 text-xs text-zinc-200 outline-none font-jetbrains"
                     >
                       <option value="technical">Technical Standard (පරිගණක විද්‍යාත්මක - SLS 1134)</option>
                       <option value="natural">Natural Modern (සුගම සිංහල)</option>
@@ -901,14 +1200,14 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                   </div>
 
                   <div>
-                    <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider block mb-1">
+                    <span className="text-[10px] text-zinc-400 uppercase tracking-wider block mb-1">
                       Auto-Translate Domains
                     </span>
-                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+                    <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
                       {autoTranslateDomains.map((dom) => (
                         <span
                           key={dom}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] font-mono text-zinc-300"
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#0d0f17] border border-zinc-800 text-[10px] text-zinc-300"
                         >
                           <span>{dom}</span>
                           <button
@@ -925,7 +1224,7 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                   <div className="pt-2 border-t border-zinc-800 space-y-1.5">
                     <button
                       onClick={() => setShowOptionsModal(true)}
-                      className="w-full py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono transition-colors text-center cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs transition-colors text-center cursor-pointer flex items-center justify-center gap-1.5 font-medium"
                     >
                       <Sliders className="w-3 h-3" />
                       <span>Configure Advanced Options</span>
@@ -934,33 +1233,20 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                 </div>
               )}
 
-              {/* Tab 3: Quick Translate */}
-              {popupTab === "quick" && (
-                <div className="space-y-2 animate-in fade-in duration-150">
-                  <input
-                    type="text"
-                    placeholder="Type English or Singlish..."
-                    defaultValue={selectedText || "Container Orchestration"}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 outline-none font-mono"
-                  />
-                  <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs space-y-1">
-                    <span className="font-bold text-white block font-sinhala">බහාලුම් සංවිධානය</span>
-                    <span className="text-[10px] text-zinc-400 font-mono">කන්ටේනර් ඕකෙස්ට්‍රේෂන් (DevOps &amp; Cloud)</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Tab 4: Lexicon */}
+              {/* Tab 5: Lexicon */}
               {popupTab === "lexicon" && (
                 <div className="space-y-2 animate-in fade-in duration-150">
-                  <div className="text-[11px] text-zinc-400">
-                    <strong className="text-zinc-200">{dictionary.length}</strong> official technical terms synced offline in extension storage.
+                  <div className="text-[11px] text-zinc-400 flex items-center justify-between">
+                    <span><strong className="text-zinc-200">{dictionary.length}</strong> official terms synced</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-900 text-zinc-500 border border-zinc-800">
+                      SLS 1134
+                    </span>
                   </div>
                   <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                     {dictionary.slice(0, 4).map((d) => (
-                      <div key={d.id} className="p-2 rounded bg-zinc-900/60 border border-zinc-800/80 text-[11px]">
-                        <div className="flex justify-between">
-                          <span className="font-mono text-zinc-300 font-medium">{d.term}</span>
+                      <div key={d.id} className="p-2 rounded-xl bg-[#0d0f17] border border-zinc-800/90 text-[11px]">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sky-300 font-medium">{d.term}</span>
                           <span className="text-emerald-400 font-sinhala font-semibold">{d.sinhalaStandard}</span>
                         </div>
                       </div>
@@ -973,7 +1259,7 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
               <div className="pt-2 border-t border-zinc-800">
                 <button
                   onClick={onOpenExport}
-                  className="w-full py-2 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 font-mono text-[11px] transition-colors text-center cursor-pointer flex items-center justify-center gap-1.5"
+                  className="w-full py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-[11px] transition-colors text-center cursor-pointer flex items-center justify-center gap-1.5 font-medium"
                 >
                   <Chrome className="w-3.5 h-3.5 text-sky-400" />
                   <span>Get Extension Package (.zip)</span>

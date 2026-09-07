@@ -1,6 +1,6 @@
 {
-  "name": "Sinhala Translator & AI Terminology Extension",
-  "description": "Context-aware Unicode Sinhala translator and Chrome extension suite with technical dictionary, Singlish phonetic typing, and AI agent for learning technical terms.",
+  "name": "Omarchy Sinhala Translator",
+  "description": "Developer-grade Unicode Sinhala translator with SLS 1134 compliance, featuring a tiling-window extension suite and interactive CLI.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

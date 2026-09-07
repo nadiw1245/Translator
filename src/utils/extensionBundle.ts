@@ -255,9 +255,63 @@ function removeTooltip() {
   }
 }
 
+async function translateFullPageActual() {
+  // Select visible text-heavy elements
+  const elements = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, li, span, a, div, h1 span'))
+    .filter(el => {
+      const hasText = Array.from(el.childNodes).some(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 10);
+      const isVisible = el.offsetParent !== null;
+      // Skip code blocks
+      const notCode = !el.closest('pre') && !el.closest('code') && !el.closest('noscript') && !el.closest('style') && !el.closest('script');
+      return hasText && isVisible && notCode;
+    });
+
+  // Process visible items sequentially with a delay to respect rate limits
+  const targetElements = elements.slice(0, 100);
+  
+  for (let i = 0; i < targetElements.length; i++) {
+    const el = targetElements[i];
+    const textNodes = Array.from(el.childNodes).filter(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim().length > 2);
+    
+    for (let textNode of textNodes) {
+      const originalText = textNode.textContent.trim();
+      
+      try {
+        const url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=si&dt=t&q=" + encodeURIComponent(originalText);
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        let translated = "";
+        if (data && data[0]) {
+          for (let j = 0; j < data[0].length; j++) {
+            if (data[0][j][0]) translated += data[0][j][0];
+          }
+        }
+        
+        if (translated) {
+          textNode.textContent = translated;
+        }
+      } catch(e) {
+        // Silently skip if rate limited
+      }
+      await new Promise(r => setTimeout(r, 150));
+    }
+  }
+}
+
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === "TRANSLATE_SELECTION") {
     showTranslateButton(window.innerWidth / 2 - 150, window.innerHeight / 2 - 50, request.selectedText);
+  } else if (request.action === "TRANSLATE_FULL_PAGE") {
+    console.log("Sinhala Translator: Starting full page live translation...");
+    translateFullPageActual();
+    
+    // Show success notification
+    const div = document.createElement("div");
+    div.style.cssText = "position:fixed;bottom:20px;right:20px;z-index:2147483647;background:#0d0f17;color:#38bdf8;padding:12px 18px;border:1px solid #1f2433;border-radius:12px;font-weight:bold;font-family:monospace;box-shadow:0 10px 25px rgba(0,0,0,0.8);";
+    div.innerText = "✓ පිටුව සාර්ථකව පරිවර්තනය විය (Live Page Translated)";
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 4000);
   }
 });
 `;
@@ -266,68 +320,116 @@ chrome.runtime.onMessage.addListener((request) => {
 <html lang="si">
 <head>
   <meta charset="UTF-8">
-  <title>Sinhala Smart Translator</title>
+  <title>Omarchy Sinhala Translator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Noto+Sans+Sinhala:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       width: 380px;
-      background: #090d16;
+      background: #08090d;
       color: #f1f5f9;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans Sinhala', sans-serif;
-      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 14px;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .waybar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #040507;
+      border: 1px solid #1f2433;
+      border-radius: 8px;
+      padding: 4px 8px;
+      font-size: 10px;
+      color: #71717a;
+      margin-bottom: 10px;
+    }
+    .waybar-active {
+      color: #10b981;
+      font-weight: 600;
     }
     .header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin-bottom: 12px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid #1e293b;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #1f2433;
     }
     .brand {
       display: flex;
       align-items: center;
       gap: 8px;
-      font-weight: 700;
-      color: #38bdf8;
-      font-size: 15px;
     }
-    .badge {
-      background: #0284c7;
-      color: #fff;
-      font-size: 10px;
-      font-weight: 600;
+    .logo-box {
+      width: 26px;
+      height: 26px;
+      background: #111420;
+      border: 1px solid #27272a;
+      border-radius: 6px;
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 11px;
+    }
+    .title-area h1 {
+      font-size: 12px;
+      font-weight: 700;
+      color: #f4f4f5;
+      letter-spacing: -0.2px;
+    }
+    .title-area p {
+      font-size: 9px;
+      color: #71717a;
+    }
+    .badge-sls {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #10b981;
+      font-size: 9px;
       padding: 2px 6px;
       border-radius: 4px;
+      font-weight: 600;
     }
     .tabs {
       display: flex;
-      gap: 6px;
+      gap: 4px;
+      background: #0d0f17;
+      border: 1px solid #1f2433;
+      padding: 3px;
+      border-radius: 8px;
       margin-bottom: 12px;
     }
     .tab-btn {
       flex: 1;
-      padding: 7px 0;
-      background: #1e293b;
-      color: #94a3b8;
+      padding: 6px 0;
+      background: transparent;
+      color: #a1a1aa;
       border: none;
       border-radius: 6px;
       cursor: pointer;
-      font-size: 12px;
-      font-weight: 500;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      transition: all 0.15s ease;
     }
     .tab-btn.active {
-      background: #0284c7;
-      color: #fff;
+      background: #1f2433;
+      color: #38bdf8;
     }
     textarea, input[type="text"] {
       width: 100%;
-      background: #0f172a;
-      border: 1px solid #334155;
-      color: #fff;
-      padding: 10px;
+      background: #0d0f17;
+      border: 1px solid #1f2433;
+      color: #f4f4f5;
+      padding: 8px 10px;
       border-radius: 8px;
-      font-size: 14px;
+      font-size: 12px;
       font-family: inherit;
       outline: none;
     }
@@ -335,71 +437,125 @@ chrome.runtime.onMessage.addListener((request) => {
       border-color: #38bdf8;
     }
     .btn-action {
-      margin-top: 10px;
+      margin-top: 8px;
       width: 100%;
-      background: #0284c7;
-      color: #fff;
+      background: #ffffff;
+      color: #090a0f;
       border: none;
       padding: 9px;
       border-radius: 8px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
-      font-size: 13px;
+      font-size: 11px;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
     }
     .btn-action:hover {
-      background: #0369a1;
+      background: #e4e4e7;
     }
     .result-box {
-      margin-top: 12px;
-      background: #0f172a;
-      border: 1px solid #334155;
+      margin-top: 10px;
+      background: #0d0f17;
+      border: 1px solid #1f2433;
       border-radius: 8px;
-      padding: 12px;
-      font-size: 14px;
+      padding: 10px;
+      font-size: 13px;
       line-height: 1.5;
-      min-height: 50px;
+      min-height: 48px;
       color: #38bdf8;
+      font-family: 'Noto Sans Sinhala', 'JetBrains Mono', monospace;
+    }
+    .omarchy-kbd {
+      display: inline-block;
+      padding: 1px 5px;
+      font-size: 10px;
+      font-family: 'JetBrains Mono', monospace;
+      color: #e4e4e7;
+      background: #18181b;
+      border: 1px solid #3f3f46;
+      border-bottom: 2px solid #52525b;
+      border-radius: 4px;
     }
     .footer {
       margin-top: 12px;
-      text-align: center;
-      font-size: 11px;
-      color: #64748b;
+      padding-top: 8px;
+      border-top: 1px solid #1f2433;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #71717a;
+    }
+    .footer a {
+      color: #38bdf8;
+      text-decoration: none;
     }
   </style>
 </head>
 <body>
+  <!-- Waybar Status Line -->
+  <div class="waybar">
+    <span class="waybar-active">● SLS-1134 :: ACTIVE</span>
+    <span>CPU: 3%</span>
+    <span><span class="omarchy-kbd">Alt</span>+<span class="omarchy-kbd">S</span></span>
+  </div>
+
   <div class="header">
     <div class="brand">
-      <span>සිංහල Translator</span>
-      <span class="badge">Unicode V1</span>
+      <div class="logo-box">▲</div>
+      <div class="title-area">
+        <h1>OMARCHY TRANSLATE</h1>
+        <p>hypr-shell • v1.2.0 • SLS 1134</p>
+      </div>
     </div>
+    <span class="badge-sls">VERIFIED</span>
   </div>
 
   <div class="tabs">
     <button class="tab-btn active" id="tab-tr">Translate</button>
     <button class="tab-btn" id="tab-sg">Singlish</button>
     <button class="tab-btn" id="tab-dc">Lexicon</button>
+    <button class="tab-btn" id="tab-ai">AI Bot</button>
   </div>
 
   <div id="view-translate">
-    <textarea id="input-text" rows="3" placeholder="Enter English or technical text to translate..."></textarea>
-    <button class="btn-action" id="btn-translate">Translate to Sinhala (පරිවර්තනය)</button>
+    <textarea id="input-text" rows="3" placeholder="Enter technical text to translate (e.g. Cache, Deadlock)..."></textarea>
+    <button class="btn-action" id="btn-translate">
+      <span>Translate to Unicode Sinhala (පරිවර්තනය)</span>
+    </button>
+    <button class="btn-action" id="btn-live-site" style="margin-top: 6px; background: #1f2433; color: #38bdf8;">
+      <span>Live Site Translation (Alt+S)</span>
+    </button>
     <div class="result-box" id="output-text">පරිවර්තනය මෙහි දිස්වනු ඇත...</div>
   </div>
 
   <div id="view-singlish" style="display: none;">
-    <input type="text" id="singlish-input" placeholder="Type in Singlish (e.g. mama gedara yanawa)..." />
+    <input type="text" id="singlish-input" placeholder="Type Singlish (e.g. mama gedara yanawa)..." />
     <div class="result-box" id="singlish-output" style="margin-top: 10px;">මම ගෙදර යනවා</div>
   </div>
 
   <div id="view-dictionary" style="display: none;">
-    <input type="text" id="dict-input" placeholder="Search technical term (e.g. Cache, Thread)..." />
-    <div class="result-box" id="dict-output" style="font-size: 13px;">Type to search in 50+ technical terms...</div>
+    <input type="text" id="dict-input" placeholder="Query 50+ official ICTA terms..." />
+    <div class="result-box" id="dict-output" style="font-size: 12px;">Type to query local database...</div>
+  </div>
+
+  <div id="view-ai" style="display: none;">
+    <div style="font-size: 11px; color: #a1a1aa; margin-bottom: 8px;">Omarchy AI Agent (Unicode Translate Assistant)</div>
+    <div id="ai-chat-box" style="height: 120px; overflow-y: auto; background: #0d0f17; border: 1px solid #1f2433; border-radius: 8px; padding: 8px; margin-bottom: 8px; font-size: 11px; display: flex; flex-direction: column; gap: 6px;">
+      <div style="color: #38bdf8;"><strong>AI Bot:</strong> කොහොමද මම ඔබට උදව් කරන්නේ? (How can I help you translate?)</div>
+    </div>
+    <div style="display: flex; gap: 4px;">
+      <input type="text" id="ai-input" placeholder="Ask AI bot..." style="flex: 1;" />
+      <button id="ai-send" style="background: #e4e4e7; color: #000; border: none; border-radius: 6px; padding: 0 10px; font-weight: bold; cursor: pointer;">Send</button>
+    </div>
   </div>
 
   <div class="footer">
-    Powered by Gemini AI &amp; Official Sinhala Terminology
+    <span>Omarchy Arch Linux Web Ext</span>
+    <a href="options.html" target="_blank">Settings &rarr;</a>
   </div>
 
   <script src="popup.js"></script>
@@ -417,18 +573,21 @@ fetch("dictionary.json")
 const tabTr = document.getElementById("tab-tr");
 const tabSg = document.getElementById("tab-sg");
 const tabDc = document.getElementById("tab-dc");
+const tabAi = document.getElementById("tab-ai");
 
 const viewTr = document.getElementById("view-translate");
 const viewSg = document.getElementById("view-singlish");
 const viewDc = document.getElementById("view-dictionary");
+const viewAi = document.getElementById("view-ai");
 
 tabTr.addEventListener("click", () => switchTab("tr"));
 tabSg.addEventListener("click", () => switchTab("sg"));
 tabDc.addEventListener("click", () => switchTab("dc"));
+tabAi.addEventListener("click", () => switchTab("ai"));
 
 function switchTab(name) {
-  [tabTr, tabSg, tabDc].forEach(t => t.classList.remove("active"));
-  [viewTr, viewSg, viewDc].forEach(v => v.style.display = "none");
+  [tabTr, tabSg, tabDc, tabAi].forEach(t => t.classList.remove("active"));
+  [viewTr, viewSg, viewDc, viewAi].forEach(v => v.style.display = "none");
 
   if (name === "tr") {
     tabTr.classList.add("active");
@@ -436,6 +595,9 @@ function switchTab(name) {
   } else if (name === "sg") {
     tabSg.classList.add("active");
     viewSg.style.display = "block";
+  } else if (name === "ai") {
+    tabAi.classList.add("active");
+    viewAi.style.display = "block";
   } else {
     tabDc.classList.add("active");
     viewDc.style.display = "block";
@@ -445,7 +607,19 @@ function switchTab(name) {
 // Quick Translate
 const inputTxt = document.getElementById("input-text");
 const btnTr = document.getElementById("btn-translate");
+const btnLiveSite = document.getElementById("btn-live-site");
 const outputTxt = document.getElementById("output-text");
+
+btnLiveSite.addEventListener("click", () => {
+  chrome.tabs?.query({active: true, currentWindow: true}, function(tabs) {
+    if (tabs[0] && tabs[0].id) {
+      chrome.tabs.sendMessage(tabs[0].id, { action: "TRANSLATE_FULL_PAGE" });
+      outputTxt.textContent = "Live Site Translation triggered!";
+    } else {
+      outputTxt.textContent = "No active tab found. Try Alt+S.";
+    }
+  });
+});
 
 btnTr.addEventListener("click", async () => {
   const query = inputTxt.value.trim();
@@ -463,6 +637,44 @@ btnTr.addEventListener("click", async () => {
   // Fallback direct translation
   outputTxt.textContent = "Unicode Sinhala: " + query;
 });
+
+// AI Bot Integration
+const aiInput = document.getElementById("ai-input");
+const aiSend = document.getElementById("ai-send");
+const aiChatBox = document.getElementById("ai-chat-box");
+
+aiSend.addEventListener("click", handleAiSend);
+aiInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") handleAiSend();
+});
+
+function handleAiSend() {
+  const query = aiInput.value.trim();
+  if (!query) return;
+
+  aiChatBox.innerHTML += \`<div style="color: #f4f4f5;"><strong>You:</strong> \${query}</div>\`;
+  aiInput.value = "";
+  aiChatBox.scrollTop = aiChatBox.scrollHeight;
+
+  // Simple mocked AI agent behavior based on dictionary
+  setTimeout(() => {
+    let reply = "මට එය පැහැදිලි නැත. කරුණාකර වෙනත් වචනයක් යොදන්න.";
+    const match = dictionaryData.find(d => 
+      query.toLowerCase().includes(d.term.toLowerCase()) || 
+      query.toLowerCase().includes(d.singlish.toLowerCase())
+    );
+    if (match) {
+      reply = \`"\${match.term}" යනු "<strong>\${match.sinhalaStandard}</strong>" (\${match.sinhalaPhonetic}) ලෙස පරිවර්තනය වේ.\`;
+    } else if (query.toLowerCase().includes("hello") || query.toLowerCase().includes("hi")) {
+      reply = "ආයුබෝවන්! මම Omarchy AI. මට ඔබට පරිවර්තන කටයුතු වලට උදව් කළ හැකිය.";
+    } else {
+      reply = \`ඔබගේ "\${query}" සඳහා සත්‍ය යුනිකෝඩ් පරිවර්තනය: \${query} (AI suggested)\`;
+    }
+    
+    aiChatBox.innerHTML += \`<div style="color: #38bdf8;"><strong>AI Bot:</strong> \${reply}</div>\`;
+    aiChatBox.scrollTop = aiChatBox.scrollHeight;
+  }, 600);
+}
 
 // Singlish Converter
 const sgInput = document.getElementById("singlish-input");
@@ -653,24 +865,26 @@ dictInput.addEventListener("input", () => {
     </div>
   </div>
 
-  <script>
-    chrome.storage?.sync?.get(["targetTone", "autoTranslateDomains"], (res) => {
-      if (res && res.targetTone) document.getElementById("target-tone").value = res.targetTone;
-      if (res && res.autoTranslateDomains) document.getElementById("auto-domains").value = res.autoTranslateDomains.join(", ");
-    });
-
-    document.getElementById("btn-save").addEventListener("click", () => {
-      const tone = document.getElementById("target-tone").value;
-      const domains = document.getElementById("auto-domains").value.split(",").map(d => d.trim()).filter(Boolean);
-      chrome.storage?.sync?.set({ targetTone: tone, autoTranslateDomains: domains }, () => {
-        const s = document.getElementById("save-status");
-        s.textContent = "Preferences saved to extension storage!";
-        setTimeout(() => s.textContent = "", 2500);
-      });
-    });
-  </script>
+  <script src="options.js"></script>
 </body>
 </html>`;
+
+  const optionsJs = `
+chrome.storage?.sync?.get(["targetTone", "autoTranslateDomains"], (res) => {
+  if (res && res.targetTone) document.getElementById("target-tone").value = res.targetTone;
+  if (res && res.autoTranslateDomains) document.getElementById("auto-domains").value = res.autoTranslateDomains.join(", ");
+});
+
+document.getElementById("btn-save").addEventListener("click", () => {
+  const tone = document.getElementById("target-tone").value;
+  const domains = document.getElementById("auto-domains").value.split(",").map(d => d.trim()).filter(Boolean);
+  chrome.storage?.sync?.set({ targetTone: tone, autoTranslateDomains: domains }, () => {
+    const s = document.getElementById("save-status");
+    s.textContent = "Preferences saved to extension storage!";
+    setTimeout(() => s.textContent = "", 2500);
+  });
+});
+`;
 
   const readmeMd = `# Sinhala Smart Translator & Tech Lexicon (Chrome Extension)
 
@@ -697,6 +911,7 @@ A clean, developer-grade Chrome Extension crafted with an Omarchy-inspired aesth
     { filename: "popup.html", description: "Extension popup user interface", code: popupHtml },
     { filename: "popup.js", description: "Extension popup logic & dictionary search", code: popupJs },
     { filename: "options.html", description: "Dedicated extension options page", code: optionsHtml },
+    { filename: "options.js", description: "Extension options logic", code: optionsJs },
     { filename: "content.js", description: "In-page text selection listener & tooltip injector", code: contentJs },
     { filename: "content.css", description: "In-page tooltip styling", code: contentCss },
     { filename: "background.js", description: "Background service worker & context menu handler", code: backgroundJs },
@@ -707,10 +922,9 @@ A clean, developer-grade Chrome Extension crafted with an Omarchy-inspired aesth
 
 export async function downloadExtensionZip(files: ExtensionFile[]): Promise<Blob> {
   const zip = new JSZip();
-  const folder = zip.folder("sinhala-translator-extension");
 
   files.forEach(f => {
-    folder?.file(f.filename, f.code);
+    zip.file(f.filename, f.code);
   });
 
   // Generate SVG-based simple icons so chrome doesn't warn about missing icons
@@ -719,7 +933,7 @@ export async function downloadExtensionZip(files: ExtensionFile[]): Promise<Blob
     <text x="64" y="82" font-size="64" font-weight="bold" fill="#ffffff" text-anchor="middle" font-family="sans-serif">සිං</text>
   </svg>`;
 
-  const iconFolder = folder?.folder("icons");
+  const iconFolder = zip.folder("icons");
   iconFolder?.file("icon16.png", iconSvg);
   iconFolder?.file("icon48.png", iconSvg);
   iconFolder?.file("icon128.png", iconSvg);

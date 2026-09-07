@@ -87,3 +87,5 @@ export interface SiteTranslationResult {
 }
 
 export type ActiveTab = 'translator' | 'site-translator' | 'simulator' | 'dictionary' | 'ai-agent' | 'singlish' | 'extension-export';
+
+export type OmarchyTheme = 'onyx' | 'tokyonight' | 'nord' | 'gruvbox';
